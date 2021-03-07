@@ -52,7 +52,7 @@ class Crawliexpress:
     def truncate(text, max=20):
         return f'{text[0:max]}...' if len(text) > max else text
 
-    # Recursive function to scrap through review pages on aliexpress product
+    # Scrap through review pages on aliexpress product (Recursive)
     def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=False, only_from_my_country=False, with_pictures=False, max_pages=-1):
 
         # Results container
@@ -125,8 +125,10 @@ class Crawliexpress:
 
         return res
 
+    # Scrap product page and get product-specific info
     def product(self, product_id):
 
+        # Results container
         product = {}
 
         url = f'{self.item_uri}{product_id}.html'
@@ -143,42 +145,14 @@ class Crawliexpress:
         product['price'] = data['priceModule']['formatedPrice']
 
         return product
-        
-
-        # soup = BeautifulSoup(request.content, 'html.parser')
-
-        # print(soup)
-        
-        # product['product_title'] = soup.find(class_='product-title-text').text.strip()
-        # product['rating_average'] = soup.find(class_='overview-rating-average').text.strip()
-        # product['review_count'] = int(soup.find(class_='overview-rating-average').text.strip().split(' ')[0])
-        # product['orders_count'] = int(soup.find(class_='product-reviewer-sold').text.strip().split(' ')[0])
-        # product['price'] = soup.find(class_='product-price-value').text.strip()
-        # product['available_quantity'] = int(soup.find(class_='product-quantity-tip').find('span').text.strip().split(' ')[0])
-
-        # for prop in soup.find_all(class_='sku-property'):
-        #     aux_prop = []
-        #     key = prop.find(class_='sku-title').text.strip().lower().replace(' ', '_')
-            
-        #     for option in prop.find_all('span'):
-        #         aux_prop.append(option.text.strip())
-
-        #     product[key] = aux_prop
-
-        # aux_pics = []
-        # for pic in soup.find(class_='images-view-list').find_all('img'):
-        #     aux_pics.append(pic['src'])
-        # product['pics'] = aux_pics
-
-        return product
 
 
 product_id = '1005001483534438'
 
 crawliexpress = Crawliexpress(region='US')
 
-# crawliexpress_reviews_results = crawliexpress.reviews(product_id=product_id, translate=True, only_from_my_country=False, max_pages=40)
-# crawliexpress.save_csv(crawliexpress_reviews_results, f'dist/crawliexpress-reviews-{product_id}')
+crawliexpress_reviews_results = crawliexpress.reviews(product_id=product_id, translate=True, only_from_my_country=False, max_pages=40)
+crawliexpress.save_csv(crawliexpress_reviews_results, f'dist/crawliexpress-reviews-{product_id}')
 
 crawliexpress_product_result = crawliexpress.product(product_id)
 print(crawliexpress_product_result)
