@@ -3,27 +3,30 @@ import math
 import requests
 import urllib.parse
 import random
+import time
 import json
 import re
 
 from bs4 import BeautifulSoup
 
-class Crawliexpress:
+class AliexpressCrawler:
     
     # Set default request parameters
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36', 
     }
     cookies = {
-        "aep_usuc_f": "region=US",
+        "intl_locale": "",
+        "aep_usuc_f": "",
     }
     item_uri = 'https://www.aliexpress.com/item/'
     feedback_uri = "https://feedback.aliexpress.com/display/productEvaluation.htm"
 
-    def __init__(self, owner_member_id="", company_id="", member_type="seller", region="US"):
+    def __init__(self, owner_member_id="", company_id="", member_type="seller", region="US", locale="en_US", currency="USD", country="usa"):
         self.owner_member_id = owner_member_id or self.generate_id()
         self.company_id = company_id or self.generate_id()
-        self.cookies['aep_usuc_f'] = f'region={region}'
+        self.cookies['intl_locale'] = f'{locale}'
+        self.cookies['aep_usuc_f'] = f'isfm=y&site={country}&c_tp={currency}&region={region}&b_locale={locale}'
         self.member_type = member_type
         self.count = 1
         pass
@@ -37,23 +40,15 @@ class Crawliexpress:
             id = f'{id}{random.choice(numbers)}'
         return id
 
-    # Save .csv file from dict List [{}]
-    @staticmethod
-    def save_file(results):
-        if(len(results) > 0):
-            with open(f'{filename}.csv', 'w', encoding='utf8', newline='') as output_file:
-                output_file.write('sep=,\n')
-                fc = csv.DictWriter(output_file, fieldnames=results[0].keys())
-                fc.writeheader()
-                fc.writerows(results)
-
     # Reduce text size to fit in prints
     @staticmethod
     def truncate(text, max=20):
         return f'{text[0:max]}...' if len(text) > max else text
 
     # Scrap through review pages on aliexpress product (Recursive)
-    def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=False, only_from_my_country=False, with_pictures=False, max_pages=-1):
+    def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=True, only_from_my_country=False, with_pictures=False, max_pages=-1):
+
+        print(f'Aliexpress Reviews - Product {product_id} - Page {page}')
 
         # Results container
         res = []
@@ -92,8 +87,6 @@ class Crawliexpress:
             review['user_name'] = fb_user_info.find(class_='user-name').text.strip()
             review['user_country'] = fb_user_info.find(class_='user-country').contents[0].text.strip()
 
-            print(review['user_country'])
-
             # BUYER FEEDBACK
             review['text'] = buyer_feedback.contents[1].text.strip()
             review['date'] = buyer_feedback.contents[3].text.strip()
@@ -102,7 +95,7 @@ class Crawliexpress:
             star_view_percentage = item.find(class_='star-view').contents[0]['style'].split(':')[1].replace('%', '')
             review['rating'] = math.floor(int(star_view_percentage)/20)
 
-            # PRODUCT ATTIRBUTES (VARIATONS, SHIPS FROM, SHIPPING METHOD)
+            # PRODUCT ATTRIBUTES (VARIATONS, SHIPS FROM, SHIPPING METHOD)
             for prop in user_order_info.find_all('span'):
                 key, data = prop.text.split(':')
                 review[key.strip().lower().replace(' ', '_')] = data.strip()
@@ -120,7 +113,6 @@ class Crawliexpress:
 
         if(not soup.find(class_="ui-pagination-next ui-pagination-disabled") and (max_pages < 0 or self.count < max_pages)):
             self.count += 1
-            print(f'Opening page {self.count}')
             res += self.reviews(product_id, page+1, version, start_valid_date, i18n, translate, only_from_my_country, with_pictures, max_pages)
 
         return res
@@ -134,7 +126,6 @@ class Crawliexpress:
         url = f'{self.item_uri}{product_id}.html'
         request = requests.get(url, headers=self.headers, cookies=self.cookies)
 
-        target = ["title", "averageStar", "totalValidNum", "formatTradeCount"]
         match = re.search(r'data: ({.+})', request.text).group(1)
         data = json.loads(match)
 
@@ -146,13 +137,56 @@ class Crawliexpress:
 
         return product
 
+    def categories(self):
+      
+        # Results container
+        res = []
+        categories = None
+        count = 0
+        timeout = False
+        
+        with open('./utils/categories.json') as fp:
+            categories = json.load(fp)
 
-product_id = '1005001483534438'
+        for key in categories:
 
-crawliexpress = Crawliexpress(region='US')
+            count += 1
 
-crawliexpress_reviews_results = crawliexpress.reviews(product_id=product_id, translate=True, only_from_my_country=False, max_pages=40)
-crawliexpress.save_csv(crawliexpress_reviews_results, f'dist/crawliexpress-reviews-{product_id}')
+            # if(count > 10):
+            #     break
 
-crawliexpress_product_result = crawliexpress.product(product_id)
-print(crawliexpress_product_result)
+            url = f'{categories[key]}?SortType=total_tranpro_desc'
+            print(f'Aliexpress Categories - Url {url} | {count}/{len(categories)}')
+
+            try:
+                request = requests.get(url, headers=self.headers, cookies=self.cookies)
+                match = re.search(r'window.runParams = ({.+})', request.text).group(1)
+                items = json.loads(match)['items']
+                timeout = False
+            except:
+                print(f'- Error: No search results')
+                if(timeout):
+                    pass
+                    # print('- Warning: Too much requests, waiting for 10 seconds before next request')
+                    # time.sleep(10)
+                timeout = True
+                continue
+
+            for item in items:
+
+                aux = {}
+                
+                aux['product_id'] = item['productDetailUrl'].split('item/')[1].split('.html')[0]
+                aux['image_url'] = item['imageUrl']
+                aux['price'] = item['price']
+                aux['title'] = item['title']
+                if 'tradeDesc' in item:
+                    aux['order_count'] = int((item['tradeDesc']).split(' ')[0])
+                else:
+                    aux['order_count'] = 0
+
+                res.append(aux)
+        
+        res.sort(key=lambda x: x.get('order_count'))
+
+        return res     
