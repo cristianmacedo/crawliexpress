@@ -23,13 +23,15 @@ class AliexpressCrawler:
     feedback_uri = "https://feedback.aliexpress.com/display/productEvaluation.htm"
 
     def __init__(self, owner_member_id="", company_id="", member_type="seller", region="US", locale="en_US", currency="USD", country="usa"):
+
         self.owner_member_id = owner_member_id or self.generate_id()
         self.company_id = company_id or self.generate_id()
         self.cookies['intl_locale'] = f'{locale}'
         self.cookies['aep_usuc_f'] = f'isfm=y&site={country}&c_tp={currency}&region={region}&b_locale={locale}'
         self.member_type = member_type
         self.count = 1
-        pass
+
+        print(f'Crawliexpress - Region: {region} | Country: {country} | Locale: {locale} | Currency: {currency} | Member ID: {self.owner_member_id} | Company ID: {self.company_id}')
 
     # Generate random ID
     @staticmethod
@@ -46,9 +48,18 @@ class AliexpressCrawler:
         return f'{text[0:max]}...' if len(text) > max else text
 
     # Scrap through review pages on aliexpress product (Recursive)
-    def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=True, only_from_my_country=False, with_pictures=False, max_pages=-1):
+    def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=True, only_from_my_country=False, with_pictures=False, max_pages=-1, exists=False):
 
-        print(f'Aliexpress Reviews - Product {product_id} - Page {page}')
+        if (not exists):
+            product_listing = self.product(product_id)
+            if (product_listing):
+                print(json.dumps(product_listing, indent=2))
+                exists = True
+            else:
+                print('- Error: Invalid Product ID')
+                return False 
+
+        print(f'Crawliexpress - Reviews | Product ID: {product_id} - Page: {page}')
 
         # Results container
         res = []
@@ -72,11 +83,11 @@ class AliexpressCrawler:
         url = f"{self.feedback_uri}?{urllib.parse.urlencode(params)}"
 
         request = requests.get(url, headers=self.headers, cookies=self.cookies)
+
         soup = BeautifulSoup(request.content, 'html.parser')
         feedback_items = soup.find_all('div', class_='feedback-item')
 
         for item in feedback_items:
-
             review = {}
 
             fb_user_info = item.find(class_='fb-user-info')
@@ -113,18 +124,24 @@ class AliexpressCrawler:
 
         if(not soup.find(class_="ui-pagination-next ui-pagination-disabled") and (max_pages < 0 or self.count < max_pages)):
             self.count += 1
-            res += self.reviews(product_id, page+1, version, start_valid_date, i18n, translate, only_from_my_country, with_pictures, max_pages)
+            res += self.reviews(product_id, page+1, version, start_valid_date, i18n, translate, only_from_my_country, with_pictures, max_pages, exists)
 
         return res
-
+            
     # Scrap product page and get product-specific info
     def product(self, product_id):
+
+        print(f'Crawliexpress - Product listing info | Product ID: {product_id}')
 
         # Results container
         product = {}
 
         url = f'{self.item_uri}{product_id}.html'
         request = requests.get(url, headers=self.headers, cookies=self.cookies)
+
+        if(request.status_code != 200):
+            print('- Error: Invalid Product ID')
+            return False
 
         match = re.search(r'data: ({.+})', request.text).group(1)
         data = json.loads(match)
@@ -156,10 +173,14 @@ class AliexpressCrawler:
             #     break
 
             url = f'{categories[key]}?SortType=total_tranpro_desc'
-            print(f'Aliexpress Categories - Url {url} | {count}/{len(categories)}')
+            print(f'Crawliexpress - Categories | Url {url} - {count}/{len(categories)}')
+
+            request = requests.get(url, headers=self.headers, cookies=self.cookies)
+
+            if(request.status_code != 200):
+                print('- Error: Invalid category page')
 
             try:
-                request = requests.get(url, headers=self.headers, cookies=self.cookies)
                 match = re.search(r'window.runParams = ({.+})', request.text).group(1)
                 items = json.loads(match)['items']
                 timeout = False
