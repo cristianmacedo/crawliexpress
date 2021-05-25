@@ -76,10 +76,8 @@ Crawls the `-p` product page and returns an Object List `[{}]` with custommer re
 Options:
   -p, --product-id TEXT                 Target product id  [required]
   -o, --only-from-my-country TEXT       Only reviews from the selected contry
-
   -m, --max-pages INTEGER               Maximum ammount of review pages
   -t, --translate / -nt, --no-translate Translate to selected language
-
   --help                                Show this message and exit.
 ```
 
