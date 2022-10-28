@@ -47,8 +47,81 @@ class AliexpressCrawler:
     def truncate(text, max=20):
         return f'{text[0:max]}...' if len(text) > max else text
 
+    def search(self, search_text, page=1, sort_type="default"):
+
+        request = requests.get(
+        f"https://www.aliexpress.com/wholesale?SearchText={search_text}&page={page}&SortType={sort_type}")
+
+        # Find all products
+        match = re.search(r'window.runParams = ({.+})', request.text).group(1)
+        products = json.loads(match)['mods']['itemList']['content']
+
+        return products
+
+    def review_count(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=False, only_from_my_country=False, with_pictures=False, max_pages=-1, exists=False):
+
+        params = {
+            'productId': product_id,
+            'v': version,
+            'ownerMemberId': self.owner_member_id,
+            'companyId': self.company_id,
+            'memberType': self.member_type,
+            'evaStarFilterValue': 'all Stars',
+            'evaSortValue': 'sortdefault@feedback',
+            'page': page,
+            'currentPage': page,
+            'startValidDate': None, 
+            'i18n': 'true' if i18n else 'false',
+            'withPictures':  'true' if with_pictures else 'false',
+            'withAdditionalFeedback': 'false',
+            'onlyFromMyCountry':  'true' if only_from_my_country else 'false',
+            'version': None,
+            'isOpened': 'true',
+            'translate': 'Y' if translate else 'N',
+            'jumpToTop': 'false'
+        }
+
+        url = f"{self.feedback_uri}?{urllib.parse.urlencode(params)}"
+
+        request = requests.get(url, headers=self.headers, cookies=self.cookies)
+        review_count = 0
+
+        try:
+            soup = BeautifulSoup(request.content, 'html.parser')
+            all_stars = soup.find(class_='fb-star-selector')
+            review_count = int(all_stars.find('em').text)
+        except:
+            pass
+
+        return review_count
+
+    # Find all products that include reviews
+    def with_reviews(self, search_text, with_pictures=False, max_pages=1):
+
+        products_with_reviews = []
+        self.count = 0
+
+        while self.count < max_pages:
+            print(f'Crawliexpress - With reviews | Page: {self.count}')
+            products = self.search(search_text, page=self.count)
+            for product in products:
+
+                product_id = product['productId']
+                product_url = f"{self.item_uri}{product_id}.html"
+                review_count_nsfw = self.review_count(product_id=product_id, with_pictures=with_pictures)
+
+                print(f'Crawliexpress - With reviews | Product ID: {product_id} | Review count: {review_count_nsfw} | URL: {product_url}')
+
+                if(review_count_nsfw > 0):
+                    products_with_reviews.append(product)
+
+            self.count += 1
+            
+            
+        return products_with_reviews
+
     # Scrap through review pages on aliexpress product (Recursive)
-    def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=True, only_from_my_country=False, with_pictures=False, max_pages=-1, exists=False):
+    def reviews(self, product_id, page=1, version="2", start_valid_date="", i18n=False, translate=False, only_from_my_country=False, with_pictures=False, max_pages=-1, exists=False):
 
         if (not exists):
             product_listing = self.product(product_id)
@@ -56,7 +129,7 @@ class AliexpressCrawler:
                 print(json.dumps(product_listing, indent=2))
                 exists = True
             else:
-                print('- Error: Invalid Product ID')
+                print('Crawliexpress - Reviews | Error: Invalid Product ID')
                 return False 
 
         print(f'Crawliexpress - Reviews | Product ID: {product_id} - Page: {page}')
